@@ -1,0 +1,24 @@
+# Secrets — NE JAMAIS publier
+.env
+
+# Données de réservation (générées au runtime)
+data/
+
+# Dépendances / logs
+node_modules/
+*.log
+
+# Outils locaux (Claude / skills installés)
+.agents/
+skills-lock.json
+.claude/
+
+# Fichiers média sources (les versions web optimisées sont dans assets/)
+0A2EB785-2DBA-4CF3-98C3-B4478438F51F.mov
+IMG_0104.jpg
+IMG_0105.jpg
+IMG_0106.jpg
+
+# Système
+.DS_Store
+Thumbs.db

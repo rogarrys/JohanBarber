@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JOHAN — Barbier · Coupe & Barbe sur rendez-vous</title>
+  <meta name="description" content="Coupe et barbe sur rendez-vous chez Johan. Fades, dégradés et contours nets. Choisis ton créneau en ligne, de 11h à 20h. 9 allée François Vayva." />
+  <meta name="theme-color" content="#efeeec" />
+
+  <meta property="og:title" content="JOHAN — Barbier" />
+  <meta property="og:description" content="Coupe 15€ · Coupe + Barbe 20€. Réserve ton créneau en ligne." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/cut-1.jpg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="nav">
+    <div class="nav__inner">
+      <a href="#top" class="nav__brand" aria-label="Johan, barbier — accueil">
+        <span class="nav__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+        </span>
+        <span class="nav__name">JOHAN</span>
+      </a>
+
+      <nav class="nav__links" aria-label="Navigation principale">
+        <a href="#services">Prestations</a>
+        <a href="#showcase">Réalisations</a>
+        <a href="#contact">Contact</a>
+      </nav>
+
+      <a href="#reserver" class="btn btn--primary nav__cta">Réserver</a>
+
+      <button class="nav__burger" id="burger" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <div class="mobile-menu" id="mobile-menu" aria-hidden="true">
+    <nav class="mobile-menu__links" aria-label="Navigation mobile">
+      <a href="#services" data-i="0">Prestations</a>
+      <a href="#showcase" data-i="1">Réalisations</a>
+      <a href="#reserver" data-i="2">Réserver</a>
+      <a href="#contact" data-i="3">Contact</a>
+    </nav>
+    <a href="#" class="mobile-menu__ig" id="mobile-ig" target="_blank" rel="noopener" data-i="4">Instagram</a>
+  </div>
+
+  <main id="top">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="container hero__inner">
+        <p class="hero__label reveal">Barbier · sur rendez-vous</p>
+        <h1 class="hero__title reveal" data-d="1">Ta coupe,<br /><em>ton créneau.</em></h1>
+        <p class="hero__sub reveal" data-d="2">
+          Coupe et barbe, du fade au dégradé. Tu choisis ton horaire en ligne, je m'occupe du reste.
+        </p>
+        <div class="hero__cta reveal" data-d="3">
+          <a href="#reserver" class="btn btn--primary btn--lg">
+            Réserver un créneau
+            <svg class="btn__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+          </a>
+          <a href="#showcase" class="btn btn--ghost btn--lg">Voir mes coupes</a>
+        </div>
+        <dl class="hero__facts reveal" data-d="3">
+          <div><dt>Coupe</dt><dd>15€</dd></div>
+          <div><dt>Coupe + Barbe</dt><dd>20€</dd></div>
+          <div><dt>Horaires</dt><dd>11h – 20h</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- ============ RÉALISATIONS (cartes qui se rangent en grille au scroll) ============ -->
+    <section class="showcase" id="showcase">
+      <div class="container">
+        <div class="showcase__head reveal">
+          <h2 class="section__title">Mes dernières coupes.</h2>
+          <p class="section__lead">Prises en cabine, sans retouche.</p>
+        </div>
+
+        <div class="showcase__grid" id="showcase-grid" aria-label="Aperçu des dernières coupes de Johan">
+          <figure class="showcase__card" data-i="0">
+            <video src="assets/barber.mp4" poster="assets/barber-poster.jpg" muted loop playsinline preload="metadata"></video>
+          </figure>
+          <figure class="showcase__card" data-i="1">
+            <img src="assets/cut-1.jpg" alt="Dégradé bas net réalisé par Johan" loading="lazy" />
+          </figure>
+          <figure class="showcase__card" data-i="2">
+            <img src="assets/cut-2.jpg" alt="Coupe cheveux bouclés, fond fondu" loading="lazy" />
+          </figure>
+          <figure class="showcase__card" data-i="3">
+            <img src="assets/cut-3.jpg" alt="Coupe et barbe, finitions nettes" loading="lazy" />
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SERVICES ============ -->
+    <section class="section" id="services">
+      <div class="container">
+        <div class="section__head reveal">
+          <h2 class="section__title">Les prestations</h2>
+          <p class="section__lead">Deux formules, le tarif est affiché, le travail est net.</p>
+        </div>
+
+        <div class="services">
+          <article class="price-card reveal">
+            <div class="price-card__top">
+              <h3 class="price-card__name">Coupe</h3>
+              <div class="price-card__price">15€</div>
+            </div>
+            <p class="price-card__desc">
+              Shampoing, coupe aux ciseaux et à la tondeuse, finitions au rasoir et contours nets.
+            </p>
+            <ul class="price-card__list">
+              <li>Lavage + coiffage</li>
+              <li>Dégradé ou fade au choix</li>
+              <li>Contours au rasoir</li>
+            </ul>
+            <div class="price-card__foot">
+              <span class="price-card__time">environ 30 min</span>
+              <button class="btn btn--primary book-trigger" data-service="coupe">Réserver</button>
+            </div>
+          </article>
+
+          <article class="price-card reveal" data-d="1">
+            <span class="price-card__tag">Le plus pris</span>
+            <div class="price-card__top">
+              <h3 class="price-card__name">Coupe + Barbe</h3>
+              <div class="price-card__price">20€</div>
+            </div>
+            <p class="price-card__desc">
+              La coupe complète, plus la taille et le dessin de barbe, serviette chaude et soin.
+            </p>
+            <ul class="price-card__list">
+              <li>Tout le pack Coupe</li>
+              <li>Taille + dessin de barbe</li>
+              <li>Serviette chaude + soin</li>
+            </ul>
+            <div class="price-card__foot">
+              <span class="price-card__time">environ 45 min</span>
+              <button class="btn btn--primary book-trigger" data-service="coupe-barbe">Réserver</button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RESERVATION ============ -->
+    <section class="section" id="reserver">
+      <div class="container">
+        <div class="section__head reveal">
+          <h2 class="section__title">Choisis ton créneau.</h2>
+          <p class="section__lead">Prestation, jour et heure. Je confirme par Instagram.</p>
+        </div>
+
+        <div class="booking reveal" data-d="1">
+          <div class="booking__inner" id="booking-form">
+            <div class="step">
+              <div class="step__label"><span class="step__n">1</span> Prestation</div>
+              <div class="chips" id="service-options" role="radiogroup" aria-label="Choix de la prestation"></div>
+            </div>
+
+            <div class="step">
+              <div class="step__label"><span class="step__n">2</span> Jour</div>
+              <div class="date-strip" id="date-strip" role="radiogroup" aria-label="Choix du jour"></div>
+            </div>
+
+            <div class="step">
+              <div class="step__label"><span class="step__n">3</span> Heure <span class="step__hint">11h – 20h</span></div>
+              <div class="slot-grid" id="slot-grid" role="radiogroup" aria-label="Choix de l'heure"></div>
+            </div>
+
+            <div class="step">
+              <div class="step__label"><span class="step__n">4</span> Tes coordonnées</div>
+              <div class="fields">
+                <div class="field">
+                  <label for="cust-name">Prénom</label>
+                  <input type="text" id="cust-name" name="name" autocomplete="given-name" placeholder="Ex. Karim" />
+                </div>
+                <div class="field">
+                  <label for="cust-phone">Téléphone</label>
+                  <input type="tel" id="cust-phone" name="phone" autocomplete="tel" placeholder="Ex. 06 12 34 56 78" />
+                </div>
+              </div>
+            </div>
+
+            <div class="booking__foot">
+              <p class="booking__summary" id="booking-summary" aria-live="polite">Sélectionne une prestation pour commencer.</p>
+              <button class="btn btn--primary btn--lg booking__submit" id="booking-submit" disabled>Confirmer le rendez-vous</button>
+              <p class="booking__error" id="booking-error" role="alert"></p>
+            </div>
+          </div>
+
+          <div class="booking__success" id="booking-success" hidden>
+            <div class="success__check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3 class="success__title">Créneau réservé.</h3>
+            <p class="success__recap" id="success-recap"></p>
+            <p class="success__note" id="success-note">Dernière étape : envoie-moi le récap sur Instagram pour que je valide. Le message est déjà copié.</p>
+            <div class="success__actions">
+              <a href="#" class="btn btn--primary btn--lg" id="success-ig" target="_blank" rel="noopener">Envoyer sur Instagram</a>
+              <button class="btn btn--ghost btn--lg" id="success-ics">Ajouter au calendrier</button>
+              <button class="btn btn--text" id="success-reset">Nouveau rendez-vous</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section class="section" id="contact">
+      <div class="container">
+        <div class="section__head reveal">
+          <h2 class="section__title">Passe au salon.</h2>
+          <p class="section__lead">Une question, un imprévu ? Écris-moi directement.</p>
+        </div>
+
+        <div class="contact-grid">
+          <article class="info-card reveal">
+            <h3 class="info-card__title">Adresse</h3>
+            <p class="info-card__text">9 allée François Vayva</p>
+            <a href="https://www.google.com/maps/search/?api=1&query=9%20all%C3%A9e%20Fran%C3%A7ois%20Vayva" class="info-card__link" target="_blank" rel="noopener">Voir l'itinéraire →</a>
+          </article>
+
+          <article class="info-card reveal" data-d="1">
+            <h3 class="info-card__title">Horaires</h3>
+            <p class="info-card__text">Tous les jours<br /><strong>11h – 20h</strong></p>
+            <span class="info-card__muted">Uniquement sur rendez-vous</span>
+          </article>
+
+          <article class="info-card reveal" data-d="2">
+            <h3 class="info-card__title">Instagram</h3>
+            <p class="info-card__text" id="contact-ig-handle">@johan</p>
+            <a href="#" class="info-card__link" id="contact-ig" target="_blank" rel="noopener">M'écrire →</a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <span class="nav__name">JOHAN</span>
+        <p>Barbier · Coupe &amp; barbe sur rendez-vous.</p>
+      </div>
+      <nav class="footer__links" aria-label="Liens de pied de page">
+        <a href="#services">Prestations</a>
+        <a href="#showcase">Réalisations</a>
+        <a href="#reserver">Réserver</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="footer__meta">
+        <span>9 allée François Vayva</span>
+        <span>11h – 20h</span>
+      </div>
+    </div>
+    <div class="container footer__bottom">
+      <span>© <span id="year"></span> Johan</span>
+      <a href="#reserver" class="footer__cta">Prendre rendez-vous</a>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

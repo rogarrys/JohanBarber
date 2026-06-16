@@ -1,0 +1,14 @@
+{
+  "name": "johan-barber",
+  "version": "1.0.0",
+  "description": "Site + réservation pour le salon de Johan, avec notifications Telegram.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "chat-id": "node telegram-setup.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
