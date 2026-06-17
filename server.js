@@ -48,7 +48,7 @@ const SERVICES = {
 /* ---------- réglages (modifiables par l'admin) ---------- */
 const DEFAULT_SETTINGS = {
   openTime: "11:00",
-  closeTime: "20:00",
+  closeTime: "21:00",
   step: 30,
   openDays: [0, 1, 2, 3, 4, 5, 6], // 0=dimanche ... 6=samedi
   closedDates: [],                  // ["2026-07-14", ...]
@@ -171,7 +171,7 @@ function buildEmailHTML(b) {
       </td></tr>
 
       <tr><td style="padding:18px 30px;border-top:1px solid #efeee9;background:#faf9f6;">
-        <p style="margin:0;font-size:12px;color:#9a9a9b;line-height:1.5;">Réservation reçue via le site &middot; 9 allée François Vayva<br>11h&ndash;20h &middot; sur rendez-vous</p>
+        <p style="margin:0;font-size:12px;color:#9a9a9b;line-height:1.5;">Réservation reçue via le site &middot; 9 allée François Vayva<br>11h&ndash;21h &middot; sur rendez-vous</p>
       </td></tr>
 
     </table>

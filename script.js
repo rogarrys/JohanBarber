@@ -10,7 +10,7 @@ const CONFIG = {
   name: "Johan",
   instagram: "johanduviv", // pseudo Instagram (sans @)
   address: "9 allée François Vayva",
-  hours: "11h – 20h",
+  hours: "11h – 21h",
 };
 
 const SERVICES = {
@@ -24,7 +24,7 @@ const STORAGE_KEY = "johan_rdv_v1";
 
 /* Réglages horaires : valeurs par défaut, écrasées par /api/config (panel admin) */
 let cfg = {
-  openTime: "11:00", closeTime: "20:00", step: 30,
+  openTime: "11:00", closeTime: "21:00", step: 30,
   openDays: [0, 1, 2, 3, 4, 5, 6], closedDates: [],
   slots: [], unavailable: {},
 };
