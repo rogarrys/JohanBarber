@@ -302,6 +302,9 @@ async function handleBook(req, res) {
   if (new Date(date + "T00:00:00") < ymdToday()) return json(res, 400, { ok: false, error: "date_passee" });
   if (!dateIsOpen(date)) return json(res, 400, { ok: false, error: "jour_ferme" });
   if (!genSlotsForDow(dowOf(date)).includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
+  // Section critique : recharge le disque, vérifie, écrit — tout en synchrone (atomique en Node,
+  // donc deux réservations simultanées ne peuvent PAS prendre le même créneau).
+  store = loadJSON(BOOK_FILE, store);
   if (isTaken(date, time) || isBlocked(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
 
   const svc = SERVICES[service];
