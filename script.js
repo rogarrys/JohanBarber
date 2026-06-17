@@ -14,7 +14,7 @@ const CONFIG = {
 };
 
 const SERVICES = {
-  "coupe":       { label: "Coupe",          price: 15, minutes: 30 },
+  "coupe":       { label: "Coupe",          price: 15, minutes: 45 },
   "coupe-barbe": { label: "Coupe + Barbe",  price: 20, minutes: 45 },
 };
 
