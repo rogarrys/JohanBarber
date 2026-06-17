@@ -44,7 +44,7 @@ function slotsForDate(dateKey) {
   const dc = dayCfg(new Date(dateKey + "T00:00:00").getDay());
   if (!dc.open) return [];
   const out = [], open = hhmmToMin(dc.openTime), close = hhmmToMin(dc.closeTime);
-  for (let m = open; m <= close - cfg.step; m += cfg.step) out.push(minutesToHHMM(m));
+  for (let m = open; m <= close; m += cfg.step) out.push(minutesToHHMM(m)); // dernier créneau = heure de fermeture
   return out;
 }
 const dayIsOpen = (d) => dayCfg(d.getDay()).open && !cfg.closedDates.includes(ymd(d));

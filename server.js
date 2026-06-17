@@ -72,7 +72,7 @@ function genSlotsForDow(dow) {
   if (!dc || !dc.open) return [];
   const out = [];
   const open = hhmmToMin(dc.openTime), close = hhmmToMin(dc.closeTime);
-  for (let m = open; m <= close - settings.step; m += settings.step) out.push(minToHHMM(m));
+  for (let m = open; m <= close; m += settings.step) out.push(minToHHMM(m)); // dernier créneau = heure de fermeture
   return out;
 }
 

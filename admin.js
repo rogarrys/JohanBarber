@@ -22,7 +22,7 @@ function genSlotsForDow(dow) {
   const c = dayCfg(dow);
   if (!c.open) return [];
   const out = [], o = hhmmToMin(c.openTime), cl = hhmmToMin(c.closeTime);
-  for (let m = o; m <= cl - data.settings.step; m += data.settings.step) out.push(minToHHMM(m));
+  for (let m = o; m <= cl; m += data.settings.step) out.push(minToHHMM(m)); // dernier créneau = heure de fermeture
   return out;
 }
 
