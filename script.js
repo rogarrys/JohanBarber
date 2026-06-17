@@ -22,11 +22,14 @@ const DAYS_SHOWN = 14;       // nb de jours d'ouverture proposés
 const DAYS_SCAN = 30;        // on balaye jusqu'à 30 jours pour trouver les jours ouverts
 const STORAGE_KEY = "johan_rdv_v1";
 
-/* Réglages horaires : valeurs par défaut, écrasées par /api/config (panel admin) */
+/* Réglages : valeurs par défaut, écrasées par /api/config (panel admin).
+   schedule[0..6] (0=dimanche) = { open, openTime, closeTime } */
+const defDay = () => ({ open: true, openTime: "11:00", closeTime: "21:00" });
 let cfg = {
-  openTime: "11:00", closeTime: "21:00", step: 30,
-  openDays: [0, 1, 2, 3, 4, 5, 6], closedDates: [],
-  slots: [], unavailable: {},
+  step: 30,
+  schedule: { 0: defDay(), 1: defDay(), 2: defDay(), 3: defDay(), 4: defDay(), 5: defDay(), 6: defDay() },
+  closedDates: [],
+  unavailable: {},
 };
 
 /* ---------- petits utilitaires ---------- */
@@ -36,13 +39,15 @@ const pad2 = (n) => String(n).padStart(2, "0");
 const hhmmToMin = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
 const minutesToHHMM = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-function slotsFromCfg() {
-  if (Array.isArray(cfg.slots) && cfg.slots.length) return cfg.slots;
-  const out = [], open = hhmmToMin(cfg.openTime), close = hhmmToMin(cfg.closeTime);
+const dayCfg = (dow) => (cfg.schedule && (cfg.schedule[dow] || cfg.schedule[String(dow)])) || { open: false, openTime: "11:00", closeTime: "21:00" };
+function slotsForDate(dateKey) {
+  const dc = dayCfg(new Date(dateKey + "T00:00:00").getDay());
+  if (!dc.open) return [];
+  const out = [], open = hhmmToMin(dc.openTime), close = hhmmToMin(dc.closeTime);
   for (let m = open; m <= close - cfg.step; m += cfg.step) out.push(minutesToHHMM(m));
   return out;
 }
-const dayIsOpen = (d) => cfg.openDays.includes(d.getDay()) && !cfg.closedDates.includes(ymd(d));
+const dayIsOpen = (d) => dayCfg(d.getDay()).open && !cfg.closedDates.includes(ymd(d));
 
 const fmtDow   = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
 const fmtMon   = new Intl.DateTimeFormat("fr-FR", { month: "short" });
@@ -157,8 +162,11 @@ async function fetchConfig() {
     if (!res.ok) return;
     const data = await res.json();
     if (data && data.ok) {
-      if (data.config) Object.assign(cfg, data.config);
-      cfg.slots = Array.isArray(data.slots) ? data.slots : [];
+      if (data.config) {
+        if (data.config.schedule) cfg.schedule = data.config.schedule;
+        if (data.config.step) cfg.step = data.config.step;
+        cfg.closedDates = Array.isArray(data.config.closedDates) ? data.config.closedDates : [];
+      }
       cfg.unavailable = data.unavailable || {};
     }
   } catch {
@@ -256,7 +264,7 @@ function buildSlots() {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   let available = 0;
-  for (const time of slotsFromCfg()) {
+  for (const time of slotsForDate(state.date)) {
     const m = hhmmToMin(time);
     const btn = document.createElement("button");
     btn.type = "button";
@@ -550,9 +558,40 @@ function initBookTriggers() {
 }
 
 /* ============================================================
+   AFFICHAGE DES HORAIRES (public) — depuis la config par jour
+   ============================================================ */
+const DAY_FULL = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+const fmtHeure = (t) => { const [h, m] = t.split(":"); return m === "00" ? `${parseInt(h, 10)}h` : `${parseInt(h, 10)}h${m}`; };
+
+function renderHours() {
+  const order = [1, 2, 3, 4, 5, 6, 0]; // Lundi → Dimanche
+  const list = $("#hours-list");
+  if (list) {
+    list.innerHTML = order.map((d) => {
+      const c = dayCfg(d);
+      const val = c.open ? `${fmtHeure(c.openTime)} – ${fmtHeure(c.closeTime)}` : "Fermé";
+      return `<div class="hours-row"><span>${DAY_FULL[d]}</span><span${c.open ? "" : ' class="is-closed"'}>${val}</span></div>`;
+    }).join("");
+  }
+  // fourchette globale (pour le hero + footer)
+  let minO = null, maxC = null;
+  order.forEach((d) => {
+    const c = dayCfg(d);
+    if (!c.open) return;
+    const o = hhmmToMin(c.openTime), cl = hhmmToMin(c.closeTime);
+    if (minO === null || o < minO) minO = o;
+    if (maxC === null || cl > maxC) maxC = cl;
+  });
+  const env = minO !== null ? `${fmtHeure(minutesToHHMM(minO))} – ${fmtHeure(minutesToHHMM(maxC))}` : "Sur RDV";
+  const fact = $("#fact-hours"); if (fact) fact.textContent = env;
+  const foot = $("#footer-hours"); if (foot) foot.textContent = env;
+}
+
+/* ============================================================
    RENDU (re)construit la partie réservation selon la config
    ============================================================ */
 function renderBooking() {
+  renderHours();
   buildDateStrip();
   const days = openDays();
   // garde la date choisie si elle est encore valide, sinon prend le 1er jour ouvert

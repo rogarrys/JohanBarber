@@ -37,26 +37,22 @@
     </header>
 
     <div class="panel__grid">
-      <!-- Horaires -->
-      <section class="acard">
+      <!-- Horaires par jour -->
+      <section class="acard acard--wide">
         <h2 class="acard__title">Mes horaires</h2>
-        <div class="afields">
-          <label class="afield">Ouverture <input type="time" id="openTime" step="900" /></label>
-          <label class="afield">Fermeture <input type="time" id="closeTime" step="900" /></label>
-          <label class="afield">Durée d'un créneau
-            <select id="step">
-              <option value="15">15 min</option>
-              <option value="20">20 min</option>
-              <option value="30">30 min</option>
-              <option value="45">45 min</option>
-              <option value="60">60 min</option>
-            </select>
-          </label>
-        </div>
-        <h3 class="acard__sub">Jours d'ouverture</h3>
-        <div class="days" id="days"></div>
+        <p class="acard__hint">Choisis tes heures pour chaque jour. Décoche un jour pour le fermer.</p>
+        <label class="afield afield--step">Durée d'un créneau
+          <select id="step">
+            <option value="15">15 min</option>
+            <option value="20">20 min</option>
+            <option value="30">30 min</option>
+            <option value="45">45 min</option>
+            <option value="60">60 min</option>
+          </select>
+        </label>
+        <div class="schedule" id="schedule"></div>
         <div class="acard__foot">
-          <button class="btn btn--primary" id="save-settings">Enregistrer</button>
+          <button class="btn btn--primary" id="save-settings">Enregistrer les horaires</button>
           <span class="admin-msg" id="settings-msg"></span>
         </div>
       </section>

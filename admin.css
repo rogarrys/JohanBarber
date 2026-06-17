@@ -80,7 +80,36 @@
 .arow { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 .arow input, .arow select { width: auto; flex: 1 1 9rem; }
 
-/* jours d'ouverture */
+/* planning par jour */
+.afield--step { max-width: 220px; margin-bottom: 1.2rem; }
+.schedule { display: flex; flex-direction: column; gap: 0.5rem; }
+.sched-row {
+  display: grid;
+  grid-template-columns: 7rem 6rem 1fr;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.sched-row.is-closed { opacity: 0.62; }
+.sched-day { font-weight: 600; }
+.sched-toggle {
+  padding: 0.45rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  font-size: 0.85rem; font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.sched-toggle.is-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sched-times { display: flex; align-items: center; gap: 0.5rem; }
+.sched-times input { width: auto; flex: 0 1 7rem; padding: 0.5rem 0.6rem; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; }
+.sched-times input:disabled { opacity: 0.5; }
+.sched-sep { color: var(--muted-2); }
+
+/* (ancien) jours d'ouverture — conservé au cas où */
 .days { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .day-toggle {
   padding: 0.55rem 0.9rem;
@@ -141,4 +170,8 @@
   .afields { grid-template-columns: 1fr; }
   .brow { grid-template-columns: 1fr auto; }
   .brow__svc { grid-column: 1 / -1; }
+  .sched-row { grid-template-columns: 1fr auto; row-gap: 0.6rem; }
+  .sched-day { grid-column: 1; }
+  .sched-toggle { grid-column: 2; grid-row: 1; justify-self: end; }
+  .sched-times { grid-column: 1 / -1; }
 }

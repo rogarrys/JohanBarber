@@ -45,15 +45,16 @@ const SERVICES = {
   "coupe-barbe": { label: "Coupe + Barbe", price: 20, minutes: 45 },
 };
 
-/* ---------- réglages (modifiables par l'admin) ---------- */
+/* ---------- réglages (modifiables par l'admin) ----------
+   Planning par jour : schedule[0..6] (0=dimanche ... 6=samedi),
+   chaque jour = { open, openTime, closeTime }. */
+const newDay = (open = true, openTime = "11:00", closeTime = "21:00") => ({ open, openTime, closeTime });
 const DEFAULT_SETTINGS = {
-  openTime: "11:00",
-  closeTime: "21:00",
   step: 30,
-  openDays: [0, 1, 2, 3, 4, 5, 6], // 0=dimanche ... 6=samedi
-  closedDates: [],                  // ["2026-07-14", ...]
-  blockedSlots: {},                 // { "2026-06-20": ["14:00"] }
-  notifyEmail: "",                  // adresse e-mail de réception des RDV (gérée dans l'admin)
+  schedule: { 0: newDay(), 1: newDay(), 2: newDay(), 3: newDay(), 4: newDay(), 5: newDay(), 6: newDay() },
+  closedDates: [],   // jours de congé ponctuels : ["2026-07-14", ...]
+  blockedSlots: {},  // créneaux bloqués : { "2026-06-20": ["14:00"] }
+  notifyEmail: "",   // adresse e-mail de réception (via .env de préférence)
 };
 
 /* ---------- utils ---------- */
@@ -65,10 +66,13 @@ const fmtDateFR = (ymd) =>
   new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" })
     .format(new Date(ymd + "T00:00:00"));
 
-function genSlots(s) {
+const dowOf = (date) => new Date(date + "T00:00:00").getDay();
+function genSlotsForDow(dow) {
+  const dc = settings.schedule[dow];
+  if (!dc || !dc.open) return [];
   const out = [];
-  const open = hhmmToMin(s.openTime), close = hhmmToMin(s.closeTime);
-  for (let m = open; m <= close - s.step; m += s.step) out.push(minToHHMM(m));
+  const open = hhmmToMin(dc.openTime), close = hhmmToMin(dc.closeTime);
+  for (let m = open; m <= close - settings.step; m += settings.step) out.push(minToHHMM(m));
   return out;
 }
 
@@ -81,7 +85,31 @@ function saveJSON(file, obj) {
   writeFileSync(file, JSON.stringify(obj, null, 2));
 }
 let store = loadJSON(BOOK_FILE, { bookings: [] });
-let settings = { ...DEFAULT_SETTINGS, ...loadJSON(SET_FILE, {}) };
+
+// Normalise les réglages chargés (et migre l'ancien format global → planning par jour)
+function normalizeSettings(loaded) {
+  loaded = loaded || {};
+  const s = {
+    step: [15, 20, 30, 45, 60].includes(Number(loaded.step)) ? Number(loaded.step) : 30,
+    closedDates: Array.isArray(loaded.closedDates) ? loaded.closedDates : [],
+    blockedSlots: loaded.blockedSlots && typeof loaded.blockedSlots === "object" ? loaded.blockedSlots : {},
+    notifyEmail: typeof loaded.notifyEmail === "string" ? loaded.notifyEmail : "",
+    schedule: {},
+  };
+  for (let d = 0; d < 7; d++) {
+    const src = loaded.schedule && (loaded.schedule[d] || loaded.schedule[String(d)]);
+    if (src) {
+      s.schedule[d] = newDay(!!src.open, src.openTime || "11:00", src.closeTime || "21:00");
+    } else if (loaded.openTime || loaded.closeTime || loaded.openDays) {
+      const od = Array.isArray(loaded.openDays) ? loaded.openDays : [0, 1, 2, 3, 4, 5, 6];
+      s.schedule[d] = newDay(od.includes(d), loaded.openTime || "11:00", loaded.closeTime || "21:00");
+    } else {
+      s.schedule[d] = newDay();
+    }
+  }
+  return s;
+}
+let settings = normalizeSettings(loadJSON(SET_FILE, {}));
 
 const isTaken = (date, time) => store.bookings.some((b) => b.date === date && b.time === time);
 const isBlocked = (date, time) => Array.isArray(settings.blockedSlots[date]) && settings.blockedSlots[date].includes(time);
@@ -95,8 +123,8 @@ function unavailableMap() {
   return map;
 }
 function dateIsOpen(date) {
-  const d = new Date(date + "T00:00:00");
-  return settings.openDays.includes(d.getDay()) && !settings.closedDates.includes(date);
+  const dc = settings.schedule[dowOf(date)];
+  return !!(dc && dc.open) && !settings.closedDates.includes(date);
 }
 
 /* ---------- notifications ---------- */
@@ -269,11 +297,11 @@ async function handleBook(req, res) {
 
   if (!SERVICES[service]) return json(res, 400, { ok: false, error: "prestation_invalide" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { ok: false, error: "date_invalide" });
-  if (!genSlots(settings).includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
   if (name.length < 2) return json(res, 400, { ok: false, error: "nom_invalide" });
   if (phone.replace(/\D/g, "").length < 9) return json(res, 400, { ok: false, error: "tel_invalide" });
   if (new Date(date + "T00:00:00") < ymdToday()) return json(res, 400, { ok: false, error: "date_passee" });
   if (!dateIsOpen(date)) return json(res, 400, { ok: false, error: "jour_ferme" });
+  if (!genSlotsForDow(dowOf(date)).includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
   if (isTaken(date, time) || isBlocked(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
 
   const svc = SERVICES[service];
@@ -293,14 +321,22 @@ async function handleBook(req, res) {
 
 /* ---------- admin ---------- */
 function validateSettings(s) {
-  const out = { ...DEFAULT_SETTINGS };
-  if (/^\d{2}:\d{2}$/.test(s.openTime)) out.openTime = s.openTime;
-  if (/^\d{2}:\d{2}$/.test(s.closeTime)) out.closeTime = s.closeTime;
+  const out = { step: 30, schedule: {}, closedDates: [], blockedSlots: {}, notifyEmail: "" };
   if ([15, 20, 30, 45, 60].includes(Number(s.step))) out.step = Number(s.step);
-  if (Array.isArray(s.openDays)) out.openDays = s.openDays.map(Number).filter((d) => d >= 0 && d <= 6);
+
+  if (!s.schedule || typeof s.schedule !== "object") return null;
+  for (let d = 0; d < 7; d++) {
+    const src = s.schedule[d] || s.schedule[String(d)];
+    if (!src) { out.schedule[d] = newDay(false); continue; }
+    const open = !!src.open;
+    const ot = /^\d{2}:\d{2}$/.test(src.openTime) ? src.openTime : "11:00";
+    const ct = /^\d{2}:\d{2}$/.test(src.closeTime) ? src.closeTime : "21:00";
+    if (open && hhmmToMin(ct) <= hhmmToMin(ot)) return null; // horaires incohérents
+    out.schedule[d] = newDay(open, ot, ct);
+  }
+
   if (Array.isArray(s.closedDates)) out.closedDates = s.closedDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
   if (s.blockedSlots && typeof s.blockedSlots === "object") {
-    out.blockedSlots = {};
     for (const [d, arr] of Object.entries(s.blockedSlots))
       if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(arr)) out.blockedSlots[d] = arr.filter((t) => /^\d{2}:\d{2}$/.test(t));
   }
@@ -309,7 +345,6 @@ function validateSettings(s) {
     if (e === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) out.notifyEmail = e;
     else return null; // adresse invalide
   }
-  if (hhmmToMin(out.closeTime) <= hhmmToMin(out.openTime)) return null; // incohérent
   return out;
 }
 
@@ -381,10 +416,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, {
           ok: true,
           config: {
-            openTime: settings.openTime, closeTime: settings.closeTime, step: settings.step,
-            openDays: settings.openDays, closedDates: settings.closedDates,
+            schedule: settings.schedule, step: settings.step, closedDates: settings.closedDates,
           },
-          slots: genSlots(settings),
           unavailable: unavailableMap(),
         });
       }
@@ -402,6 +435,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n  JOHAN · serveur → http://localhost:${PORT}   (admin: /admin)`);
-  console.log(`  Réservations : ${store.bookings.length} | Horaires : ${settings.openTime}-${settings.closeTime}`);
+  console.log(`  Réservations : ${store.bookings.length} | Jours ouverts : ${Object.values(settings.schedule).filter((d) => d.open).length}/7 | Créneau : ${settings.step} min`);
   console.log(`  Telegram: ${TG_TOKEN && TG_CHAT ? "✓" : "✗"}  ·  E-mail: ${EMAIL_API_KEY && EMAIL_TO ? "✓" : "✗"}  ·  Admin: ${ADMIN_PASSWORD ? "✓" : "✗ (ADMIN_PASSWORD manquant)"}\n`);
 });

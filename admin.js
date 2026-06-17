@@ -5,8 +5,8 @@ const $ = (s, c = document) => c.querySelector(s);
 const $$ = (s, c = document) => Array.from(c.querySelectorAll(s));
 
 const DAYS = [
-  { n: 1, l: "Lun" }, { n: 2, l: "Mar" }, { n: 3, l: "Mer" }, { n: 4, l: "Jeu" },
-  { n: 5, l: "Ven" }, { n: 6, l: "Sam" }, { n: 0, l: "Dim" },
+  { n: 1, l: "Lundi" }, { n: 2, l: "Mardi" }, { n: 3, l: "Mercredi" }, { n: 4, l: "Jeudi" },
+  { n: 5, l: "Vendredi" }, { n: 6, l: "Samedi" }, { n: 0, l: "Dimanche" },
 ];
 
 let data = { settings: null, bookings: [], services: {} };
@@ -17,9 +17,12 @@ const labelDate = (d) => fmtShort.format(new Date(d + "T00:00:00")).replace(/\./
 
 const hhmmToMin = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
 const minToHHMM = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-function genSlots(s) {
-  const out = [], o = hhmmToMin(s.openTime), c = hhmmToMin(s.closeTime);
-  for (let m = o; m <= c - s.step; m += s.step) out.push(minToHHMM(m));
+const dayCfg = (dow) => (data.settings.schedule && (data.settings.schedule[dow] || data.settings.schedule[String(dow)])) || { open: false, openTime: "11:00", closeTime: "21:00" };
+function genSlotsForDow(dow) {
+  const c = dayCfg(dow);
+  if (!c.open) return [];
+  const out = [], o = hhmmToMin(c.openTime), cl = hhmmToMin(c.closeTime);
+  for (let m = o; m <= cl - data.settings.step; m += data.settings.step) out.push(minToHHMM(m));
   return out;
 }
 
@@ -54,18 +57,32 @@ async function load() {
 
 function render() {
   const s = data.settings;
-  $("#openTime").value = s.openTime;
-  $("#closeTime").value = s.closeTime;
   $("#step").value = String(s.step);
 
-  const daysWrap = $("#days"); daysWrap.innerHTML = "";
+  // planning par jour
+  const sw = $("#schedule"); sw.innerHTML = "";
   DAYS.forEach((d) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "day-toggle" + (s.openDays.includes(d.n) ? " is-on" : "");
-    b.textContent = d.l; b.dataset.day = d.n;
-    b.onclick = () => b.classList.toggle("is-on");
-    daysWrap.appendChild(b);
+    const c = s.schedule[d.n] || s.schedule[String(d.n)] || { open: false, openTime: "11:00", closeTime: "21:00" };
+    const row = document.createElement("div");
+    row.className = "sched-row" + (c.open ? "" : " is-closed");
+    row.dataset.day = d.n;
+    row.innerHTML =
+      `<span class="sched-day">${d.l}</span>` +
+      `<button type="button" class="sched-toggle${c.open ? " is-on" : ""}">${c.open ? "Ouvert" : "Fermé"}</button>` +
+      `<span class="sched-times">` +
+      `<input type="time" class="sched-open" step="900" value="${c.openTime}"${c.open ? "" : " disabled"} />` +
+      `<span class="sched-sep">→</span>` +
+      `<input type="time" class="sched-close" step="900" value="${c.closeTime}"${c.open ? "" : " disabled"} />` +
+      `</span>`;
+    row.querySelector(".sched-toggle").onclick = (e) => {
+      const btn = e.currentTarget;
+      const on = !btn.classList.contains("is-on");
+      btn.classList.toggle("is-on", on);
+      btn.textContent = on ? "Ouvert" : "Fermé";
+      row.classList.toggle("is-closed", !on);
+      row.querySelectorAll("input").forEach((i) => (i.disabled = !on));
+    };
+    sw.appendChild(row);
   });
 
   // congés
@@ -81,11 +98,27 @@ function render() {
   const bl = $("#blocked-list"); bl.innerHTML = "";
   blocked.forEach(({ date, time }) => bl.appendChild(chip(`${labelDate(date)} · ${time}`, () => toggleBlock(date, time, false))));
 
-  // options d'heure pour bloquer
-  const bt = $("#block-time"); bt.innerHTML = "";
-  genSlots(s).forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t; bt.appendChild(o); });
-
+  updateBlockTimes();
   renderBookings();
+}
+
+// remplit les heures à bloquer selon la date choisie (ou toutes si aucune)
+function updateBlockTimes() {
+  const date = $("#block-date").value;
+  const bt = $("#block-time"); bt.innerHTML = "";
+  let times;
+  if (date) {
+    times = genSlotsForDow(new Date(date + "T00:00:00").getDay());
+  } else {
+    const set = new Set();
+    DAYS.forEach((d) => genSlotsForDow(d.n).forEach((t) => set.add(t)));
+    times = [...set].sort();
+  }
+  if (times.length === 0) {
+    const o = document.createElement("option"); o.value = ""; o.textContent = "Jour fermé"; bt.appendChild(o);
+  } else {
+    times.forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t; bt.appendChild(o); });
+  }
 }
 
 function chip(label, onRemove) {
@@ -133,10 +166,17 @@ async function postSettings(silent) {
 }
 
 async function saveSettings() {
-  data.settings.openTime = $("#openTime").value;
-  data.settings.closeTime = $("#closeTime").value;
   data.settings.step = Number($("#step").value);
-  data.settings.openDays = $$(".day-toggle.is-on").map((b) => Number(b.dataset.day));
+  const schedule = {};
+  $$("#schedule .sched-row").forEach((row) => {
+    const d = row.dataset.day;
+    schedule[d] = {
+      open: row.querySelector(".sched-toggle").classList.contains("is-on"),
+      openTime: row.querySelector(".sched-open").value || "11:00",
+      closeTime: row.querySelector(".sched-close").value || "21:00",
+    };
+  });
+  data.settings.schedule = schedule;
   const ok = await postSettings(false);
   if (ok) {
     const msg = $("#settings-msg");
@@ -186,5 +226,6 @@ $("#logout").addEventListener("click", async () => { await api("/api/admin/logou
 $("#save-settings").addEventListener("click", saveSettings);
 $("#add-closed").addEventListener("click", addClosed);
 $("#add-block").addEventListener("click", addBlock);
+$("#block-date").addEventListener("change", updateBlockTimes);
 
 load();

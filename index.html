@@ -72,7 +72,7 @@
         <dl class="hero__facts reveal" data-d="3">
           <div><dt>Coupe</dt><dd>15€</dd></div>
           <div><dt>Coupe + Barbe</dt><dd>20€</dd></div>
-          <div><dt>Horaires</dt><dd>11h – 21h</dd></div>
+          <div><dt>Horaires</dt><dd id="fact-hours">11h – 21h</dd></div>
         </dl>
       </div>
     </section>
@@ -231,9 +231,9 @@
             <a href="https://www.google.com/maps/search/?api=1&query=9%20all%C3%A9e%20Fran%C3%A7ois%20Vayva" class="info-card__link" target="_blank" rel="noopener">Voir l'itinéraire →</a>
           </article>
 
-          <article class="info-card reveal" data-d="1">
+          <article class="info-card info-card--hours reveal" data-d="1">
             <h3 class="info-card__title">Horaires</h3>
-            <p class="info-card__text">Tous les jours<br /><strong>11h – 21h</strong></p>
+            <div class="hours-list" id="hours-list"></div>
             <span class="info-card__muted">Uniquement sur rendez-vous</span>
           </article>
 
@@ -262,7 +262,7 @@
       </nav>
       <div class="footer__meta">
         <span>9 allée François Vayva</span>
-        <span>11h – 21h</span>
+        <span id="footer-hours">11h – 21h</span>
       </div>
     </div>
     <div class="container footer__bottom">

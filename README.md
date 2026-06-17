@@ -50,8 +50,7 @@ Une seule fois, ~5 minutes :
 
 Une page privée **`/admin`** (ex. http://localhost:3000/admin) protégée par mot de passe, où tu gères tout toi-même :
 
-- **Tes horaires** : heure d'ouverture / fermeture et durée d'un créneau ;
-- **Tes jours d'ouverture** (ferme le dimanche, etc.) ;
+- **Tes horaires jour par jour** : pour chaque jour de la semaine, heure d'ouverture / fermeture, ou jour fermé ; plus la durée d'un créneau ;
 - **Tes jours de congé** (vacances, jours fériés) ;
 - **Bloquer un créneau** ponctuel (rendez-vous perso, pause) ;
 - **Voir et annuler** les réservations.

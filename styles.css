@@ -504,6 +504,11 @@ body.menu-open .mobile-menu a[data-i="4"] { transition-delay: 0.28s; }
 .info-card__text { font-size: 1.15rem; line-height: 1.4; }
 .info-card__text strong { font-weight: 700; }
 .info-card__muted { color: var(--muted-2); font-size: 0.85rem; }
+.hours-list { display: flex; flex-direction: column; gap: 0.4rem; width: 100%; }
+.hours-row { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.95rem; }
+.hours-row span:first-child { color: var(--muted); }
+.hours-row span:last-child { font-weight: 600; }
+.hours-row .is-closed { color: var(--muted-2); font-weight: 400; }
 .info-card__link { margin-top: auto; font-weight: 500; color: var(--ink); border-bottom: 1px solid var(--ink); padding-bottom: 1px; transition: color 0.2s ease, border-color 0.2s ease; }
 @media (hover: hover) and (pointer: fine) {
   .info-card__link:hover { color: var(--accent); border-color: var(--accent); }
