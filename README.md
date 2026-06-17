@@ -46,11 +46,44 @@ Une seule fois, ~5 minutes :
 
 ---
 
+## 🛠️ Espace barbier (panel admin)
+
+Une page privée **`/admin`** (ex. http://localhost:3000/admin) protégée par mot de passe, où tu gères tout toi-même :
+
+- **Tes horaires** : heure d'ouverture / fermeture et durée d'un créneau ;
+- **Tes jours d'ouverture** (ferme le dimanche, etc.) ;
+- **Tes jours de congé** (vacances, jours fériés) ;
+- **Bloquer un créneau** ponctuel (rendez-vous perso, pause) ;
+- **Voir et annuler** les réservations.
+
+Tout changement se répercute **immédiatement** sur le formulaire de réservation du site.
+
+Le mot de passe se règle dans `.env` → `ADMIN_PASSWORD=` (mets le tien, pas celui par défaut !).
+
+---
+
+## 📧 Notifications par e-mail (optionnel)
+
+En plus de Telegram, tu peux recevoir chaque réservation par **e-mail** :
+
+1. Crée un compte gratuit sur **resend.com**, génère une **clé API**.
+2. Dans `.env` :
+   ```
+   EMAIL_API_KEY=re_ta_cle
+   EMAIL_TO=ton.email@exemple.com
+   ```
+3. Relance `npm start`.
+
+> Avec la clé de test Resend (`onboarding@resend.dev`), tu peux recevoir les mails sur l'adresse de ton compte Resend. Pour envoyer depuis ta propre adresse, vérifie un domaine dans Resend et change `EMAIL_FROM`.
+
+---
+
 ## 🌐 Mettre le site en ligne (pour que les clients y accèdent)
 
 Le site a besoin d'un serveur Node qui tourne en permanence. Options gratuites/simples :
 
-- **Render.com** ou **Railway.app** : crée un service Node, connecte le dossier, commande de démarrage `npm start`, et ajoute les variables `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` dans leurs réglages (pas besoin du fichier `.env` là-bas).
+- **Render.com** ou **Railway.app** : crée un service Node, connecte le dépôt GitHub, commande de démarrage `npm start`, et ajoute les variables d'environnement dans leurs réglages (pas le fichier `.env` là-bas) : `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADMIN_PASSWORD`, et (optionnel) `EMAIL_API_KEY` + `EMAIL_TO`.
+  > Sur l'offre gratuite, le disque est éphémère : les horaires/réglages et l'historique peuvent se réinitialiser à chaque mise à jour. Ajoute un **disque persistant** (option payante) pour tout conserver. Les notifs Telegram/e-mail, elles, marchent toujours.
 - **Un petit VPS** : `npm start` derrière un reverse-proxy (nginx) ou avec `pm2`.
 
 Mets ensuite l'adresse obtenue dans ta bio Instagram.

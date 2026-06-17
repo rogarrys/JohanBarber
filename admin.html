@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Espace Johan · Admin</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#efeeec" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body class="admin">
+
+  <!-- ====== LOGIN ====== -->
+  <section class="login" id="login" hidden>
+    <form class="login__card" id="login-form">
+      <span class="nav__name">JOHAN</span>
+      <h1 class="login__title">Espace barbier</h1>
+      <p class="login__sub">Connecte-toi pour gérer tes horaires et tes rendez-vous.</p>
+      <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password" />
+      <button class="btn btn--primary btn--lg" type="submit">Se connecter</button>
+      <p class="admin-msg admin-msg--err" id="login-error"></p>
+    </form>
+  </section>
+
+  <!-- ====== PANEL ====== -->
+  <main class="panel" id="panel" hidden>
+    <header class="panel__top">
+      <span class="nav__name">JOHAN · admin</span>
+      <div class="panel__top-actions">
+        <a href="/" class="btn btn--ghost" target="_blank" rel="noopener">Voir le site</a>
+        <button class="btn btn--text" id="logout">Déconnexion</button>
+      </div>
+    </header>
+
+    <div class="panel__grid">
+      <!-- Horaires -->
+      <section class="acard">
+        <h2 class="acard__title">Mes horaires</h2>
+        <div class="afields">
+          <label class="afield">Ouverture <input type="time" id="openTime" step="900" /></label>
+          <label class="afield">Fermeture <input type="time" id="closeTime" step="900" /></label>
+          <label class="afield">Durée d'un créneau
+            <select id="step">
+              <option value="15">15 min</option>
+              <option value="20">20 min</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+            </select>
+          </label>
+        </div>
+        <h3 class="acard__sub">Jours d'ouverture</h3>
+        <div class="days" id="days"></div>
+        <div class="acard__foot">
+          <button class="btn btn--primary" id="save-settings">Enregistrer</button>
+          <span class="admin-msg" id="settings-msg"></span>
+        </div>
+      </section>
+
+      <!-- Congés -->
+      <section class="acard">
+        <h2 class="acard__title">Jours de congé</h2>
+        <p class="acard__hint">Les jours fermés n'apparaissent pas sur le site.</p>
+        <div class="arow">
+          <input type="date" id="closed-date" />
+          <button class="btn btn--ghost" id="add-closed">Ajouter</button>
+        </div>
+        <ul class="achips" id="closed-list"></ul>
+      </section>
+
+      <!-- Bloquer un créneau -->
+      <section class="acard">
+        <h2 class="acard__title">Bloquer un créneau</h2>
+        <p class="acard__hint">Pour une indisponibilité ponctuelle (perso, pause…).</p>
+        <div class="arow">
+          <input type="date" id="block-date" />
+          <select id="block-time"></select>
+          <button class="btn btn--ghost" id="add-block">Bloquer</button>
+        </div>
+        <ul class="achips" id="blocked-list"></ul>
+      </section>
+
+      <!-- Réservations -->
+      <section class="acard acard--wide">
+        <h2 class="acard__title">Rendez-vous <span class="acard__count" id="count"></span></h2>
+        <div class="bookings" id="bookings"></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="admin.js"></script>
+</body>
+</html>

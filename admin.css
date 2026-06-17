@@ -1,0 +1,144 @@
+/* ============================================================
+   JOHAN · Panel admin — styles (réutilise les tokens de styles.css)
+   ============================================================ */
+
+.admin { min-height: 100dvh; }
+
+/* un élément avec [hidden] doit VRAIMENT être masqué (sinon display:grid l'emporte) */
+[hidden] { display: none !important; }
+
+/* ---------- Login (écran plein, séparé du panel) ---------- */
+.login {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+}
+.login__card {
+  width: 100%;
+  max-width: 24rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: clamp(1.6rem, 5vw, 2.4rem);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04), 0 24px 60px -36px rgba(0,0,0,0.4);
+}
+.login__card .nav__name { font-size: 1.3rem; }
+.login__title { font-family: var(--font-display); font-weight: 700; font-size: 1.8rem; letter-spacing: -0.02em; }
+.login__sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 0.4rem; }
+.login__card input,
+.afield input, .afield select,
+.arow input, .arow select {
+  width: 100%;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.login__card input:focus,
+.afield input:focus, .afield select:focus,
+.arow input:focus, .arow select:focus { outline: none; border-color: var(--ink); }
+
+/* ---------- Panel ---------- */
+.panel { max-width: 1000px; margin-inline: auto; padding: clamp(1.1rem, 4vw, 2.2rem); }
+.panel__top {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding-bottom: 1.2rem; margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--line);
+}
+.panel__top .nav__name { font-size: 1.2rem; }
+.panel__top-actions { display: flex; align-items: center; gap: 0.6rem; }
+
+.panel__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(1rem, 2.5vw, 1.5rem);
+}
+.acard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: clamp(1.3rem, 3vw, 1.8rem);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+.acard--wide { grid-column: 1 / -1; }
+.acard__title { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; letter-spacing: -0.02em; margin-bottom: 0.4rem; }
+.acard__sub { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 1.2rem 0 0.7rem; }
+.acard__hint { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+.acard__count { color: var(--muted-2); font-weight: 400; font-size: 1rem; font-family: var(--font-mono); }
+.acard__foot { display: flex; align-items: center; gap: 1rem; margin-top: 1.3rem; }
+
+.afields { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-top: 0.8rem; }
+.afield { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem; color: var(--muted); font-weight: 500; }
+.afield:last-child { grid-column: 1 / -1; }
+
+.arow { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.arow input, .arow select { width: auto; flex: 1 1 9rem; }
+
+/* jours d'ouverture */
+.days { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.day-toggle {
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  font-size: 0.9rem; font-weight: 500;
+  transition: transform 0.14s var(--ease-out), background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.day-toggle:active { transform: scale(0.96); }
+.day-toggle.is-on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* listes de chips (congés / créneaux bloqués) */
+.achips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.achips:empty::after { content: "Aucun"; color: var(--muted-2); font-size: 0.9rem; }
+.achip {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  font-size: 0.88rem; font-family: var(--font-mono);
+}
+.achip button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.3rem; height: 1.3rem; border-radius: 999px;
+  background: var(--ink); color: #fff; font-size: 0.9rem; line-height: 1;
+}
+
+/* réservations */
+.bookings { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1rem; }
+.bookings:empty::after { content: "Aucune réservation pour l'instant."; color: var(--muted-2); font-size: 0.95rem; }
+.brow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 0.8rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.brow.is-past { opacity: 0.5; }
+.brow__when { font-family: var(--font-mono); font-size: 0.9rem; }
+.brow__when b { font-size: 1.05rem; }
+.brow__who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.brow__who .name { font-weight: 600; }
+.brow__who .meta { color: var(--muted); font-size: 0.88rem; }
+.brow__who .meta a { color: var(--ink); border-bottom: 1px solid var(--line-2); }
+.brow__svc { font-size: 0.82rem; color: var(--muted); }
+.brow__cancel { color: var(--accent); font-weight: 500; font-size: 0.88rem; padding: 0.4rem 0.6rem; }
+
+.admin-msg { font-size: 0.88rem; color: var(--muted); }
+.admin-msg--err { color: var(--accent); }
+.admin-msg.is-ok { color: #1c8a4b; }
+
+@media (max-width: 760px) {
+  .panel__grid { grid-template-columns: 1fr; }
+  .afields { grid-template-columns: 1fr; }
+  .brow { grid-template-columns: 1fr auto; }
+  .brow__svc { grid-column: 1 / -1; }
+}

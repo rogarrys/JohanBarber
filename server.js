@@ -1,12 +1,14 @@
 /* ============================================================
    JOHAN · Barbier — Serveur (sans dépendance externe)
-   - Sert le site (index.html, styles.css, script.js, assets/)
-   - API de réservation, enregistrée dans data/bookings.json
-   - Notifie le coiffeur via un bot Telegram
-   Démarrage : node server.js   (ou: npm start)
+   - Sert le site + le panel admin
+   - API réservation (data/bookings.json)
+   - Réglages horaires gérés par l'admin (data/settings.json)
+   - Notifications : Telegram + e-mail
+   Démarrage : npm start
    ============================================================ */
 
 import http from "node:http";
+import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -14,183 +16,358 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(ROOT, "data");
-const DATA_FILE = path.join(DATA_DIR, "bookings.json");
+const BOOK_FILE = path.join(DATA_DIR, "bookings.json");
+const SET_FILE = path.join(DATA_DIR, "settings.json");
 
-/* ---------- charge .env si présent (pas besoin de dépendance) ---------- */
+/* ---------- charge .env si présent ---------- */
 (function loadEnv() {
-  const envPath = path.join(ROOT, ".env");
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+  const p = path.join(ROOT, ".env");
+  if (!existsSync(p)) return;
+  for (const line of readFileSync(p, "utf8").split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
     if (!m) continue;
-    const key = m[1];
-    let val = m[2].replace(/^["']|["']$/g, "");
-    if (process.env[key] === undefined) process.env[key] = val;
+    if (process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
   }
 })();
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const TG_CHAT = process.env.TELEGRAM_CHAT_ID || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const ADMIN_SECRET = process.env.ADMIN_SECRET || ("johan-" + ADMIN_PASSWORD);
+const EMAIL_API_KEY = process.env.EMAIL_API_KEY || "";
+const EMAIL_TO = process.env.EMAIL_TO || "";
+const EMAIL_FROM = process.env.EMAIL_FROM || "JOHAN Barbier <onboarding@resend.dev>";
 const PORT = process.env.PORT || process.argv[2] || 3000;
 
-/* ---------- prestations + créneaux valides (source de vérité serveur) ---------- */
+/* ---------- prestations ---------- */
 const SERVICES = {
   "coupe": { label: "Coupe", price: 15, minutes: 30 },
   "coupe-barbe": { label: "Coupe + Barbe", price: 20, minutes: 45 },
 };
-const SLOTS = (() => {
-  const out = [];
-  for (let m = 11 * 60; m <= 19 * 60 + 30; m += 30) {
-    out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
-  }
-  return out;
-})();
 
+/* ---------- réglages (modifiables par l'admin) ---------- */
+const DEFAULT_SETTINGS = {
+  openTime: "11:00",
+  closeTime: "20:00",
+  step: 30,
+  openDays: [0, 1, 2, 3, 4, 5, 6], // 0=dimanche ... 6=samedi
+  closedDates: [],                  // ["2026-07-14", ...]
+  blockedSlots: {},                 // { "2026-06-20": ["14:00"] }
+  notifyEmail: "",                  // adresse e-mail de réception des RDV (gérée dans l'admin)
+};
+
+/* ---------- utils ---------- */
+const pad2 = (n) => String(n).padStart(2, "0");
+const hhmmToMin = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+const minToHHMM = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+const ymdToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const fmtDateFR = (ymd) =>
   new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" })
     .format(new Date(ymd + "T00:00:00"));
 
-/* ---------- stockage (fichier JSON) ---------- */
-function loadStore() {
-  try { return JSON.parse(readFileSync(DATA_FILE, "utf8")); }
-  catch { return { bookings: [] }; }
+function genSlots(s) {
+  const out = [];
+  const open = hhmmToMin(s.openTime), close = hhmmToMin(s.closeTime);
+  for (let m = open; m <= close - s.step; m += s.step) out.push(minToHHMM(m));
+  return out;
 }
-function saveStore(store) {
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
-}
-let store = loadStore();
 
-function bookedMap() {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+/* ---------- stockage ---------- */
+function loadJSON(file, fallback) {
+  try { return JSON.parse(readFileSync(file, "utf8")); } catch { return fallback; }
+}
+function saveJSON(file, obj) {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+  writeFileSync(file, JSON.stringify(obj, null, 2));
+}
+let store = loadJSON(BOOK_FILE, { bookings: [] });
+let settings = { ...DEFAULT_SETTINGS, ...loadJSON(SET_FILE, {}) };
+
+const isTaken = (date, time) => store.bookings.some((b) => b.date === date && b.time === time);
+const isBlocked = (date, time) => Array.isArray(settings.blockedSlots[date]) && settings.blockedSlots[date].includes(time);
+
+function unavailableMap() {
+  const today = ymdToday();
   const map = {};
-  for (const b of store.bookings) {
-    if (new Date(b.date + "T00:00:00") < today) continue; // ignore le passé
-    (map[b.date] ||= []).push(b.time);
-  }
+  const add = (date, time) => { if (new Date(date + "T00:00:00") >= today) (map[date] ||= []).push(time); };
+  for (const b of store.bookings) add(b.date, b.time);
+  for (const [date, times] of Object.entries(settings.blockedSlots)) for (const t of times) add(date, t);
   return map;
 }
-const isTaken = (date, time) => store.bookings.some((b) => b.date === date && b.time === time);
-
-/* ---------- Telegram ---------- */
-async function notifyTelegram(b) {
-  if (!TOKEN || !CHAT_ID) {
-    console.warn("[telegram] non configuré (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID) — notification ignorée");
-    return false;
-  }
-  const text =
-    `📅 *Nouvelle réservation*\n\n` +
-    `✂️ ${b.serviceLabel} — ${b.price}€\n` +
-    `🗓️ ${b.dateLabel} à *${b.time}*\n` +
-    `👤 ${b.name}\n` +
-    `📞 ${b.phone}`;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: "Markdown" }),
-    });
-    const json = await res.json();
-    if (!json.ok) console.error("[telegram] échec:", json.description || json);
-    return !!json.ok;
-  } catch (e) {
-    console.error("[telegram] erreur réseau:", e.message);
-    return false;
-  }
+function dateIsOpen(date) {
+  const d = new Date(date + "T00:00:00");
+  return settings.openDays.includes(d.getDay()) && !settings.closedDates.includes(date);
 }
 
-/* ---------- utils HTTP ---------- */
-const json = (res, code, obj) => {
-  res.writeHead(code, {
-    "content-type": "application/json; charset=utf-8",
-    "access-control-allow-origin": "*",
-  });
-  res.end(JSON.stringify(obj));
-};
+/* ---------- notifications ---------- */
+async function notifyTelegram(b) {
+  if (!TG_TOKEN || !TG_CHAT) { console.warn("[telegram] non configuré"); return false; }
+  const text =
+    `📅 *Nouvelle réservation*\n\n✂️ ${b.serviceLabel} — ${b.price}€\n` +
+    `🗓️ ${b.dateLabel} à *${b.time}*\n👤 ${b.name}\n📞 ${b.phone}`;
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: "Markdown" }),
+    });
+    const j = await r.json();
+    if (!j.ok) console.error("[telegram] échec:", j.description || j);
+    return !!j.ok;
+  } catch (e) { console.error("[telegram]", e.message); return false; }
+}
 
+function buildEmailHTML(b) {
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const dateCap = cap(b.dateLabel);
+  const tel = String(b.phone).replace(/[^\d+]/g, "");
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f0ed;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f0ed;padding:28px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px;max-width:480px;background:#ffffff;border:1px solid #e7e6e2;border-radius:18px;overflow:hidden;font-family:Helvetica,Arial,sans-serif;">
+
+      <tr><td style="background:#18181a;padding:24px 30px;">
+        <span style="color:#ffffff;font-size:22px;font-weight:bold;letter-spacing:4px;">JOHAN</span>
+        <span style="color:#8a8a8c;font-size:11px;letter-spacing:3px;">&nbsp;&nbsp;BARBIER</span>
+      </td></tr>
+
+      <tr><td style="padding:30px 30px 8px;">
+        <p style="margin:0 0 6px;font-size:11px;letter-spacing:2.5px;color:#d8341f;font-weight:bold;">NOUVELLE RÉSERVATION</p>
+        <h1 style="margin:0;font-size:28px;line-height:1.15;color:#18181a;font-weight:800;">${esc(b.serviceLabel)}</h1>
+      </td></tr>
+
+      <tr><td style="padding:18px 30px 4px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f6f3;border:1px solid #ecebe7;border-radius:14px;">
+          <tr><td style="padding:18px 20px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="font-size:13px;color:#7a7a7c;padding:6px 0;">Jour</td>
+                <td align="right" style="font-size:16px;color:#18181a;font-weight:bold;padding:6px 0;">${esc(dateCap)}</td>
+              </tr>
+              <tr><td colspan="2" style="border-top:1px solid #ecebe7;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="font-size:13px;color:#7a7a7c;padding:6px 0;">Heure</td>
+                <td align="right" style="font-size:26px;color:#18181a;font-weight:800;padding:6px 0;">${esc(b.time)}</td>
+              </tr>
+              <tr><td colspan="2" style="border-top:1px solid #ecebe7;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="font-size:13px;color:#7a7a7c;padding:6px 0;">Tarif</td>
+                <td align="right" style="font-size:18px;color:#d8341f;font-weight:bold;padding:6px 0;">${b.price}&nbsp;€</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+
+      <tr><td style="padding:24px 30px 6px;">
+        <p style="margin:0 0 8px;font-size:11px;letter-spacing:2.5px;color:#9a9a9b;font-weight:bold;">CLIENT</p>
+        <p style="margin:0;font-size:20px;color:#18181a;font-weight:bold;">${esc(b.name)}</p>
+        <p style="margin:4px 0 0;font-size:15px;color:#7a7a7c;">${esc(b.phone)}</p>
+      </td></tr>
+
+      <tr><td style="padding:18px 30px 30px;">
+        <a href="tel:${tel}" style="display:inline-block;background:#18181a;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 26px;border-radius:999px;">Appeler ${esc(b.name)}</a>
+      </td></tr>
+
+      <tr><td style="padding:18px 30px;border-top:1px solid #efeee9;background:#faf9f6;">
+        <p style="margin:0;font-size:12px;color:#9a9a9b;line-height:1.5;">Réservation reçue via le site &middot; 9 allée François Vayva<br>11h&ndash;20h &middot; sur rendez-vous</p>
+      </td></tr>
+
+    </table>
+    <p style="margin:16px 0 0;font-size:11px;color:#b7b6b1;font-family:Helvetica,Arial,sans-serif;">JOHAN Barbier &middot; notification automatique</p>
+  </td></tr>
+</table>
+</body></html>`;
+}
+
+async function notifyEmail(b) {
+  const to = (settings.notifyEmail || EMAIL_TO || "").trim();
+  if (!EMAIL_API_KEY || !to) { console.warn("[email] non envoyé (clé API ou adresse manquante)"); return false; }
+  const html = buildEmailHTML(b);
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${EMAIL_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject: `RDV ${b.dateLabel} ${b.time} — ${b.name}`, html }),
+    });
+    if (!r.ok) { console.error("[email] échec:", await r.text()); return false; }
+    return true;
+  } catch (e) { console.error("[email]", e.message); return false; }
+}
+
+/* ---------- auth admin (token signé, sans état) ---------- */
+function makeToken() {
+  const payload = String(Date.now() + 7 * 24 * 3600 * 1000); // expire dans 7 jours
+  const sig = crypto.createHmac("sha256", ADMIN_SECRET).update(payload).digest("hex");
+  return Buffer.from(payload).toString("base64url") + "." + sig;
+}
+function checkToken(tok) {
+  if (!tok || !tok.includes(".")) return false;
+  const [b64, sig] = tok.split(".");
+  let payload;
+  try { payload = Buffer.from(b64, "base64url").toString(); } catch { return false; }
+  const exp = Number(payload);
+  if (!exp || Date.now() > exp) return false;
+  const good = crypto.createHmac("sha256", ADMIN_SECRET).update(payload).digest("hex");
+  try { return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good)); } catch { return false; }
+}
+function parseCookies(req) {
+  const out = {};
+  (req.headers.cookie || "").split(";").forEach((c) => {
+    const i = c.indexOf("="); if (i < 0) return;
+    out[c.slice(0, i).trim()] = decodeURIComponent(c.slice(i + 1).trim());
+  });
+  return out;
+}
+const isAdmin = (req) => checkToken(parseCookies(req).admin_token);
+
+/* ---------- HTTP utils ---------- */
+function json(res, code, obj, headers = {}) {
+  res.writeHead(code, { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", ...headers });
+  res.end(JSON.stringify(obj));
+}
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (c) => {
-      data += c;
-      if (data.length > 1e5) { reject(new Error("payload trop volumineux")); req.destroy(); }
-    });
-    req.on("end", () => resolve(data));
+    let d = "";
+    req.on("data", (c) => { d += c; if (d.length > 1e5) { reject(new Error("trop gros")); req.destroy(); } });
+    req.on("end", () => resolve(d));
     req.on("error", reject);
   });
 }
+async function readJSON(req) { try { return JSON.parse(await readBody(req)); } catch { return null; } }
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8",
-  ".mp4": "video/mp4", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".png": "image/png", ".svg": "image/svg+xml", ".webp": "image/webp",
-  ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
+  ".mp4": "video/mp4", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".svg": "image/svg+xml", ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2",
 };
-
 function serveStatic(req, res) {
   let pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (pathname === "/" || pathname === "") pathname = "/index.html";
+  if (pathname === "/admin") pathname = "/admin.html";
   const filePath = path.normalize(path.join(ROOT, pathname));
-  if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end("Forbidden"); return; }
-  // ne pas exposer les fichiers sensibles
+  if (!filePath.startsWith(ROOT)) { res.writeHead(403); return res.end("Forbidden"); }
   const base = path.basename(filePath);
-  if (base === ".env" || filePath.startsWith(DATA_DIR)) { res.writeHead(404); res.end("Not found"); return; }
+  if (base === ".env" || filePath.startsWith(DATA_DIR)) { res.writeHead(404); return res.end("Not found"); }
   readFile(filePath)
-    .then((buf) => {
-      res.writeHead(200, { "content-type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream" });
-      res.end(buf);
-    })
+    .then((buf) => { res.writeHead(200, { "content-type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream" }); res.end(buf); })
     .catch(() => { res.writeHead(404); res.end("Not found"); });
 }
 
-/* ---------- routes API ---------- */
+/* ---------- réservation (public) ---------- */
 async function handleBook(req, res) {
-  let payload;
-  try { payload = JSON.parse(await readBody(req)); }
-  catch { return json(res, 400, { ok: false, error: "json_invalide" }); }
+  const p = await readJSON(req);
+  if (!p) return json(res, 400, { ok: false, error: "json_invalide" });
 
-  const service = String(payload.service || "");
-  const date = String(payload.date || "");
-  const time = String(payload.time || "");
-  const name = String(payload.name || "").trim();
-  const phone = String(payload.phone || "").trim();
+  const service = String(p.service || "");
+  const date = String(p.date || "");
+  const time = String(p.time || "");
+  const name = String(p.name || "").trim();
+  const phone = String(p.phone || "").trim();
 
-  // validations
   if (!SERVICES[service]) return json(res, 400, { ok: false, error: "prestation_invalide" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { ok: false, error: "date_invalide" });
-  if (!SLOTS.includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
+  if (!genSlots(settings).includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
   if (name.length < 2) return json(res, 400, { ok: false, error: "nom_invalide" });
   if (phone.replace(/\D/g, "").length < 9) return json(res, 400, { ok: false, error: "tel_invalide" });
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  if (new Date(date + "T00:00:00") < today) return json(res, 400, { ok: false, error: "date_passee" });
-
-  if (isTaken(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
+  if (new Date(date + "T00:00:00") < ymdToday()) return json(res, 400, { ok: false, error: "date_passee" });
+  if (!dateIsOpen(date)) return json(res, 400, { ok: false, error: "jour_ferme" });
+  if (isTaken(date, time) || isBlocked(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
 
   const svc = SERVICES[service];
   const booking = {
-    id: `${date}-${time}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `${date}-${time}-${crypto.randomBytes(3).toString("hex")}`,
     service, serviceLabel: svc.label, price: svc.price,
-    date, dateLabel: fmtDateFR(date), time,
-    name, phone,
+    date, dateLabel: fmtDateFR(date), time, name, phone,
     createdAt: new Date().toISOString(),
   };
-
   store.bookings.push(booking);
-  saveStore(store);
+  saveJSON(BOOK_FILE, store);
 
-  const notified = await notifyTelegram(booking);
-  console.log(`[résa] ${booking.dateLabel} ${time} — ${svc.label} — ${name} (${phone})${notified ? " ✓ Telegram" : ""}`);
+  const [tg, mail] = await Promise.all([notifyTelegram(booking), notifyEmail(booking)]);
+  console.log(`[résa] ${booking.dateLabel} ${time} — ${svc.label} — ${name} (${phone})  tg:${tg} mail:${mail}`);
+  return json(res, 200, { ok: true, id: booking.id, notified: tg || mail });
+}
 
-  return json(res, 200, { ok: true, id: booking.id, notified });
+/* ---------- admin ---------- */
+function validateSettings(s) {
+  const out = { ...DEFAULT_SETTINGS };
+  if (/^\d{2}:\d{2}$/.test(s.openTime)) out.openTime = s.openTime;
+  if (/^\d{2}:\d{2}$/.test(s.closeTime)) out.closeTime = s.closeTime;
+  if ([15, 20, 30, 45, 60].includes(Number(s.step))) out.step = Number(s.step);
+  if (Array.isArray(s.openDays)) out.openDays = s.openDays.map(Number).filter((d) => d >= 0 && d <= 6);
+  if (Array.isArray(s.closedDates)) out.closedDates = s.closedDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  if (s.blockedSlots && typeof s.blockedSlots === "object") {
+    out.blockedSlots = {};
+    for (const [d, arr] of Object.entries(s.blockedSlots))
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(arr)) out.blockedSlots[d] = arr.filter((t) => /^\d{2}:\d{2}$/.test(t));
+  }
+  if (typeof s.notifyEmail === "string") {
+    const e = s.notifyEmail.trim();
+    if (e === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) out.notifyEmail = e;
+    else return null; // adresse invalide
+  }
+  if (hhmmToMin(out.closeTime) <= hhmmToMin(out.openTime)) return null; // incohérent
+  return out;
+}
+
+async function handleAdmin(req, res, pathname) {
+  // login / logout n'exigent pas (encore) le cookie
+  if (pathname === "/api/admin/login" && req.method === "POST") {
+    const p = await readJSON(req);
+    if (!ADMIN_PASSWORD) return json(res, 403, { ok: false, error: "admin_desactive" });
+    if (!p || String(p.password).trim() !== ADMIN_PASSWORD.trim()) return json(res, 401, { ok: false, error: "mot_de_passe" });
+    const cookie = `admin_token=${makeToken()}; HttpOnly; Path=/; Max-Age=${7 * 24 * 3600}; SameSite=Lax`;
+    return json(res, 200, { ok: true }, { "set-cookie": cookie });
+  }
+  if (pathname === "/api/admin/logout" && req.method === "POST") {
+    return json(res, 200, { ok: true }, { "set-cookie": "admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax" });
+  }
+
+  // tout le reste exige l'authentification
+  if (!isAdmin(req)) return json(res, 401, { ok: false, error: "non_authentifie" });
+
+  if (pathname === "/api/admin/state" && req.method === "GET") {
+    const sorted = [...store.bookings].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    return json(res, 200, { ok: true, settings, bookings: sorted, services: SERVICES, emailReady: !!EMAIL_API_KEY });
+  }
+  if (pathname === "/api/admin/settings" && req.method === "POST") {
+    const p = await readJSON(req);
+    const valid = p && validateSettings(p);
+    if (!valid) return json(res, 400, { ok: false, error: "reglages_invalides" });
+    settings = valid; saveJSON(SET_FILE, settings);
+    return json(res, 200, { ok: true, settings });
+  }
+  if (pathname === "/api/admin/cancel" && req.method === "POST") {
+    const p = await readJSON(req);
+    const before = store.bookings.length;
+    store.bookings = store.bookings.filter((b) => b.id !== (p && p.id));
+    if (store.bookings.length === before) return json(res, 404, { ok: false, error: "introuvable" });
+    saveJSON(BOOK_FILE, store);
+    return json(res, 200, { ok: true });
+  }
+  if (pathname === "/api/admin/block" && req.method === "POST") {
+    const p = await readJSON(req);
+    if (!p || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || !/^\d{2}:\d{2}$/.test(p.time))
+      return json(res, 400, { ok: false, error: "param" });
+    const list = (settings.blockedSlots[p.date] ||= []);
+    const i = list.indexOf(p.time);
+    if (p.blocked === false) { if (i >= 0) list.splice(i, 1); }
+    else if (i < 0) list.push(p.time);
+    if (list.length === 0) delete settings.blockedSlots[p.date];
+    saveJSON(SET_FILE, settings);
+    return json(res, 200, { ok: true, blockedSlots: settings.blockedSlots });
+  }
+  return json(res, 404, { ok: false, error: "route_inconnue" });
 }
 
 /* ---------- serveur ---------- */
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, "http://x");
+  const { pathname } = new URL(req.url, "http://x");
 
-  if (url.pathname.startsWith("/api/")) {
+  if (pathname.startsWith("/api/")) {
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "access-control-allow-origin": "*",
@@ -199,21 +376,32 @@ const server = http.createServer(async (req, res) => {
       });
       return res.end();
     }
-    if (url.pathname === "/api/booked" && req.method === "GET") {
-      return json(res, 200, { ok: true, booked: bookedMap() });
+    try {
+      if (pathname === "/api/config" && req.method === "GET") {
+        return json(res, 200, {
+          ok: true,
+          config: {
+            openTime: settings.openTime, closeTime: settings.closeTime, step: settings.step,
+            openDays: settings.openDays, closedDates: settings.closedDates,
+          },
+          slots: genSlots(settings),
+          unavailable: unavailableMap(),
+        });
+      }
+      if (pathname === "/api/book" && req.method === "POST") return await handleBook(req, res);
+      if (pathname.startsWith("/api/admin/")) return await handleAdmin(req, res, pathname);
+      return json(res, 404, { ok: false, error: "route_inconnue" });
+    } catch (e) {
+      console.error("[serveur]", e);
+      return json(res, 500, { ok: false, error: "serveur" });
     }
-    if (url.pathname === "/api/book" && req.method === "POST") {
-      try { return await handleBook(req, res); }
-      catch (e) { return json(res, 500, { ok: false, error: "serveur" }); }
-    }
-    return json(res, 404, { ok: false, error: "route_inconnue" });
   }
 
   serveStatic(req, res);
 });
 
 server.listen(PORT, () => {
-  console.log(`\n  JOHAN · serveur lancé → http://localhost:${PORT}`);
-  console.log(`  Réservations : ${store.bookings.length} enregistrée(s) dans data/bookings.json`);
-  console.log(`  Telegram     : ${TOKEN && CHAT_ID ? "configuré ✓" : "NON configuré (voir README)"}\n`);
+  console.log(`\n  JOHAN · serveur → http://localhost:${PORT}   (admin: /admin)`);
+  console.log(`  Réservations : ${store.bookings.length} | Horaires : ${settings.openTime}-${settings.closeTime}`);
+  console.log(`  Telegram: ${TG_TOKEN && TG_CHAT ? "✓" : "✗"}  ·  E-mail: ${EMAIL_API_KEY && EMAIL_TO ? "✓" : "✗"}  ·  Admin: ${ADMIN_PASSWORD ? "✓" : "✗ (ADMIN_PASSWORD manquant)"}\n`);
 });

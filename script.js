@@ -18,20 +18,31 @@ const SERVICES = {
   "coupe-barbe": { label: "Coupe + Barbe",  price: 20, minutes: 45 },
 };
 
-/* Génère les créneaux de 11:00 à 19:30 (dernier RDV), pas de 30 min */
-const SLOT_START = 11 * 60;   // 11:00 en minutes
-const SLOT_END   = 19 * 60 + 30; // 19:30 (le RDV finit au plus tard à 20:00)
-const SLOT_STEP  = 30;
-const DAYS_AHEAD = 14;
-
+const DAYS_SHOWN = 14;       // nb de jours d'ouverture proposés
+const DAYS_SCAN = 30;        // on balaye jusqu'à 30 jours pour trouver les jours ouverts
 const STORAGE_KEY = "johan_rdv_v1";
+
+/* Réglages horaires : valeurs par défaut, écrasées par /api/config (panel admin) */
+let cfg = {
+  openTime: "11:00", closeTime: "20:00", step: 30,
+  openDays: [0, 1, 2, 3, 4, 5, 6], closedDates: [],
+  slots: [], unavailable: {},
+};
 
 /* ---------- petits utilitaires ---------- */
 const $  = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
 const pad2 = (n) => String(n).padStart(2, "0");
+const hhmmToMin = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
 const minutesToHHMM = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+function slotsFromCfg() {
+  if (Array.isArray(cfg.slots) && cfg.slots.length) return cfg.slots;
+  const out = [], open = hhmmToMin(cfg.openTime), close = hhmmToMin(cfg.closeTime);
+  for (let m = open; m <= close - cfg.step; m += cfg.step) out.push(minutesToHHMM(m));
+  return out;
+}
+const dayIsOpen = (d) => cfg.openDays.includes(d.getDay()) && !cfg.closedDates.includes(ymd(d));
 
 const fmtDow   = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
 const fmtMon   = new Intl.DateTimeFormat("fr-FR", { month: "short" });
@@ -139,17 +150,19 @@ function initReveal() {
 /* ============================================================
    4. CRÉNEAUX PRIS — serveur (partagé) + repli localStorage
    ============================================================ */
-let serverBooked = {}; // { 'YYYY-MM-DD': ['11:00', ...] } fourni par le serveur
-
-// Récupère les créneaux déjà pris auprès du serveur.
-async function fetchBooked() {
+// Récupère les horaires + créneaux indisponibles auprès du serveur.
+async function fetchConfig() {
   try {
-    const res = await fetch("/api/booked", { cache: "no-store" });
+    const res = await fetch("/api/config", { cache: "no-store" });
     if (!res.ok) return;
     const data = await res.json();
-    if (data && data.ok && data.booked) serverBooked = data.booked;
+    if (data && data.ok) {
+      if (data.config) Object.assign(cfg, data.config);
+      cfg.slots = Array.isArray(data.slots) ? data.slots : [];
+      cfg.unavailable = data.unavailable || {};
+    }
   } catch {
-    /* serveur indisponible : on reste sur le repli localStorage */
+    /* serveur indisponible : on garde les valeurs par défaut + repli localStorage */
   }
 }
 
@@ -158,14 +171,12 @@ function getLocalBookings() {
   catch { return {}; }
 }
 function isBooked(date, time) {
-  if (Array.isArray(serverBooked[date]) && serverBooked[date].includes(time)) return true;
+  if (Array.isArray(cfg.unavailable[date]) && cfg.unavailable[date].includes(time)) return true;
   const b = getLocalBookings();
   return Array.isArray(b[date]) && b[date].includes(time);
 }
 function addBooking(date, time) {
-  // mémoire serveur (en local pour l'affichage immédiat)
-  (serverBooked[date] ||= []).push(time);
-  // repli localStorage
+  (cfg.unavailable[date] ||= []).push(time);
   const b = getLocalBookings();
   if (!b[date]) b[date] = [];
   if (!b[date].includes(time)) b[date].push(time);
@@ -192,26 +203,37 @@ function buildServiceChips() {
   });
 }
 
+// Renvoie la liste des prochains jours OUVERTS (selon la config) — réutilisée à l'init.
+function openDays() {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayKey = ymd(today);
+  const out = [];
+  for (let i = 0; i < DAYS_SCAN && out.length < DAYS_SHOWN; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    if (dayIsOpen(d)) out.push({ d, key: ymd(d), isToday: ymd(d) === todayKey });
+  }
+  return out;
+}
+
 function buildDateStrip() {
   const wrap = $("#date-strip");
   wrap.innerHTML = "";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const days = openDays();
 
-  for (let i = 0; i < DAYS_AHEAD; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const key = ymd(d);
-
+  if (days.length === 0) {
+    wrap.innerHTML = `<p class="slot-grid__empty">Aucune date disponible pour le moment.</p>`;
+    return;
+  }
+  for (const { d, key, isToday } of days) {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "date-cell";
     cell.dataset.date = key;
     cell.setAttribute("role", "radio");
     cell.setAttribute("aria-checked", "false");
-    if (i === 0) cell.classList.add("is-today");
+    if (isToday) cell.classList.add("is-today");
 
-    const dow = i === 0 ? "Auj." : fmtDow.format(d).replace(".", "");
+    const dow = isToday ? "Auj." : fmtDow.format(d).replace(".", "");
     cell.innerHTML = `<span class="date-cell__dow">${dow}</span>
       <span class="date-cell__day">${d.getDate()}</span>
       <span class="date-cell__mon">${fmtMon.format(d).replace(".", "")}</span>`;
@@ -234,8 +256,8 @@ function buildSlots() {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   let available = 0;
-  for (let m = SLOT_START; m <= SLOT_END; m += SLOT_STEP) {
-    const time = minutesToHHMM(m);
+  for (const time of slotsFromCfg()) {
+    const m = hhmmToMin(time);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "slot";
@@ -379,7 +401,7 @@ async function handleSubmit() {
       body: JSON.stringify({ service: state.service, date: state.date, time: state.time, name, phone }),
     });
     if (res.status === 409) {
-      await fetchBooked();
+      await fetchConfig();
       buildSlots(); state.time = null; updateSummary();
       errorEl.textContent = "Ce créneau vient d'être pris, choisis-en un autre.";
       submit.textContent = submitLabel;
@@ -528,6 +550,25 @@ function initBookTriggers() {
 }
 
 /* ============================================================
+   RENDU (re)construit la partie réservation selon la config
+   ============================================================ */
+function renderBooking() {
+  buildDateStrip();
+  const days = openDays();
+  // garde la date choisie si elle est encore valide, sinon prend le 1er jour ouvert
+  if (!state.date || !days.some((x) => x.key === state.date)) {
+    state.date = days.length ? days[0].key : null;
+  }
+  $$("#date-strip .date-cell").forEach((c) => {
+    const on = c.dataset.date === state.date;
+    c.classList.toggle("is-active", on);
+    c.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  buildSlots();
+  updateSummary();
+}
+
+/* ============================================================
    INIT
    ============================================================ */
 function init() {
@@ -537,15 +578,11 @@ function init() {
   initShowcase();
 
   buildServiceChips();
-  buildDateStrip();
-  // pré-sélectionne aujourd'hui pour afficher les créneaux
-  selectDate(ymd(new Date()));
-  buildSlots();
-  updateSummary();
   initBookTriggers();
 
-  // récupère les créneaux déjà pris auprès du serveur, puis rafraîchit l'affichage
-  fetchBooked().then(() => { if (state.date) buildSlots(); });
+  // rendu initial (valeurs par défaut), puis rafraîchi avec la config du serveur
+  renderBooking();
+  fetchConfig().then(renderBooking);
 
   $("#cust-name").addEventListener("input", updateSummary);
   $("#cust-phone").addEventListener("input", updateSummary);
