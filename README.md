@@ -77,12 +77,26 @@ En plus de Telegram, tu peux recevoir chaque réservation par **e-mail** :
 
 ---
 
+## 🗄️ Base de données (Supabase)
+
+Les réservations et les réglages sont enregistrés dans **Supabase** (base PostgreSQL), donc **rien n'est perdu** quand l'hébergeur redémarre (Render efface son disque, pas Supabase).
+
+Mise en place (une seule fois) : exécute le contenu de [`supabase-setup.sql`](supabase-setup.sql) dans **Supabase → SQL Editor**. Puis renseigne dans `.env` (ou les variables de l'hébergeur) :
+- `SUPABASE_URL` = `https://<ref>.supabase.co`
+- `SUPABASE_KEY` = la clé **secrète** (service_role / `sb_secret_…`)
+
+La contrainte `UNIQUE(date, time)` en base **interdit deux réservations sur le même créneau**, même avec plusieurs instances.
+
+> Sans ces variables, le serveur retombe automatiquement sur des fichiers JSON locaux (`data/`) — pratique en local, mais non persistant sur Render.
+
+---
+
 ## 🌐 Mettre le site en ligne (pour que les clients y accèdent)
 
 Le site a besoin d'un serveur Node qui tourne en permanence. Options gratuites/simples :
 
-- **Render.com** ou **Railway.app** : crée un service Node, connecte le dépôt GitHub, commande de démarrage `npm start`, et ajoute les variables d'environnement dans leurs réglages (pas le fichier `.env` là-bas) : `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADMIN_PASSWORD`, et (optionnel) `EMAIL_API_KEY` + `EMAIL_TO`.
-  > Sur l'offre gratuite, le disque est éphémère : les horaires/réglages et l'historique peuvent se réinitialiser à chaque mise à jour. Ajoute un **disque persistant** (option payante) pour tout conserver. Les notifs Telegram/e-mail, elles, marchent toujours.
+- **Render.com** ou **Railway.app** : crée un service Node, connecte le dépôt GitHub, commande de démarrage `npm start`, et ajoute les variables d'environnement dans leurs réglages (pas le fichier `.env` là-bas) : `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADMIN_PASSWORD`, `SUPABASE_URL`, `SUPABASE_KEY`, et (optionnel) `EMAIL_API_KEY` + `EMAIL_TO`.
+  > Grâce à Supabase, les réservations et réglages **sont conservés** même après un redéploiement.
 - **Un petit VPS** : `npm start` derrière un reverse-proxy (nginx) ou avec `pm2`.
 
 Mets ensuite l'adresse obtenue dans ta bio Instagram.

@@ -76,7 +76,7 @@ function genSlotsForDow(dow) {
   return out;
 }
 
-/* ---------- stockage ---------- */
+/* ---------- stockage : Supabase (persistant) ou fichiers JSON (repli local) ---------- */
 function loadJSON(file, fallback) {
   try { return JSON.parse(readFileSync(file, "utf8")); } catch { return fallback; }
 }
@@ -84,7 +84,83 @@ function saveJSON(file, obj) {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(file, JSON.stringify(obj, null, 2));
 }
-let store = loadJSON(BOOK_FILE, { bookings: [] });
+
+const SB_URL = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const SB_KEY = process.env.SUPABASE_KEY || "";
+const USE_SB = !!(SB_URL && SB_KEY);
+
+function sb(path, opts = {}) {
+  return fetch(`${SB_URL}/rest/v1/${path}`, {
+    ...opts,
+    headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}`, "content-type": "application/json", ...(opts.headers || {}) },
+  });
+}
+const rowToBooking = (r) => ({
+  id: r.id, service: r.service, serviceLabel: r.service_label, price: r.price,
+  date: r.date, dateLabel: r.date_label, time: r.time, name: r.name, phone: r.phone, createdAt: r.created_at,
+});
+
+// --- réservations ---
+async function getBookings() {
+  if (USE_SB) {
+    const res = await sb("bookings?select=*");
+    if (!res.ok) throw new Error("Supabase get bookings " + res.status);
+    return (await res.json()).map(rowToBooking);
+  }
+  return loadJSON(BOOK_FILE, { bookings: [] }).bookings;
+}
+// { ok:true } ou { conflict:true } si le créneau est déjà pris (contrainte UNIQUE en base)
+async function addBooking(b) {
+  if (USE_SB) {
+    const row = {
+      id: b.id, service: b.service, service_label: b.serviceLabel, price: b.price,
+      date: b.date, date_label: b.dateLabel, time: b.time, name: b.name, phone: b.phone, created_at: b.createdAt,
+    };
+    const res = await sb("bookings", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(row) });
+    if (res.status === 409) return { conflict: true };
+    if (!res.ok) throw new Error("Supabase insert " + res.status + " " + (await res.text()));
+    return { ok: true };
+  }
+  const s = loadJSON(BOOK_FILE, { bookings: [] });
+  if (s.bookings.some((x) => x.date === b.date && x.time === b.time)) return { conflict: true };
+  s.bookings.push(b); saveJSON(BOOK_FILE, s); return { ok: true };
+}
+async function deleteBooking(id) {
+  if (USE_SB) {
+    const res = await sb(`bookings?id=eq.${encodeURIComponent(id)}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+    if (!res.ok) return false;
+    return (await res.json()).length > 0;
+  }
+  const s = loadJSON(BOOK_FILE, { bookings: [] });
+  const before = s.bookings.length;
+  s.bookings = s.bookings.filter((x) => x.id !== id);
+  saveJSON(BOOK_FILE, s);
+  return s.bookings.length < before;
+}
+
+// --- réglages ---
+async function loadSettingsRaw() {
+  if (USE_SB) {
+    try {
+      const res = await sb("settings?id=eq.1&select=data");
+      if (res.ok) { const rows = await res.json(); if (rows[0] && rows[0].data) return rows[0].data; }
+    } catch (e) { console.error("[supabase] loadSettings:", e.message); }
+    return {};
+  }
+  return loadJSON(SET_FILE, {});
+}
+async function persistSettings(s) {
+  if (USE_SB) {
+    const res = await sb("settings?on_conflict=id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ id: 1, data: s }),
+    });
+    if (!res.ok) console.error("[supabase] persistSettings:", res.status, await res.text());
+    return;
+  }
+  saveJSON(SET_FILE, s);
+}
 
 // Normalise les réglages chargés (et migre l'ancien format global → planning par jour)
 function normalizeSettings(loaded) {
@@ -109,16 +185,15 @@ function normalizeSettings(loaded) {
   }
   return s;
 }
-let settings = normalizeSettings(loadJSON(SET_FILE, {}));
+let settings = normalizeSettings({}); // défauts ; rechargé depuis la base au démarrage
 
-const isTaken = (date, time) => store.bookings.some((b) => b.date === date && b.time === time);
 const isBlocked = (date, time) => Array.isArray(settings.blockedSlots[date]) && settings.blockedSlots[date].includes(time);
 
-function unavailableMap() {
+function unavailableMap(bookings) {
   const today = ymdToday();
   const map = {};
   const add = (date, time) => { if (new Date(date + "T00:00:00") >= today) (map[date] ||= []).push(time); };
-  for (const b of store.bookings) add(b.date, b.time);
+  for (const b of bookings) add(b.date, b.time);
   for (const [date, times] of Object.entries(settings.blockedSlots)) for (const t of times) add(date, t);
   return map;
 }
@@ -302,10 +377,7 @@ async function handleBook(req, res) {
   if (new Date(date + "T00:00:00") < ymdToday()) return json(res, 400, { ok: false, error: "date_passee" });
   if (!dateIsOpen(date)) return json(res, 400, { ok: false, error: "jour_ferme" });
   if (!genSlotsForDow(dowOf(date)).includes(time)) return json(res, 400, { ok: false, error: "heure_invalide" });
-  // Section critique : recharge le disque, vérifie, écrit — tout en synchrone (atomique en Node,
-  // donc deux réservations simultanées ne peuvent PAS prendre le même créneau).
-  store = loadJSON(BOOK_FILE, store);
-  if (isTaken(date, time) || isBlocked(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
+  if (isBlocked(date, time)) return json(res, 409, { ok: false, error: "creneau_pris" });
 
   const svc = SERVICES[service];
   const booking = {
@@ -314,8 +386,10 @@ async function handleBook(req, res) {
     date, dateLabel: fmtDateFR(date), time, name, phone,
     createdAt: new Date().toISOString(),
   };
-  store.bookings.push(booking);
-  saveJSON(BOOK_FILE, store);
+  // La contrainte UNIQUE (date, time) en base garantit qu'un créneau ne peut être pris
+  // qu'une seule fois, même avec des réservations simultanées.
+  const result = await addBooking(booking);
+  if (result.conflict) return json(res, 409, { ok: false, error: "creneau_pris" });
 
   const [tg, mail] = await Promise.all([notifyTelegram(booking), notifyEmail(booking)]);
   console.log(`[résa] ${booking.dateLabel} ${time} — ${svc.label} — ${name} (${phone})  tg:${tg} mail:${mail}`);
@@ -368,22 +442,21 @@ async function handleAdmin(req, res, pathname) {
   if (!isAdmin(req)) return json(res, 401, { ok: false, error: "non_authentifie" });
 
   if (pathname === "/api/admin/state" && req.method === "GET") {
-    const sorted = [...store.bookings].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-    return json(res, 200, { ok: true, settings, bookings: sorted, services: SERVICES, emailReady: !!EMAIL_API_KEY });
+    const bookings = await getBookings();
+    bookings.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    return json(res, 200, { ok: true, settings, bookings, services: SERVICES, emailReady: !!EMAIL_API_KEY });
   }
   if (pathname === "/api/admin/settings" && req.method === "POST") {
     const p = await readJSON(req);
     const valid = p && validateSettings(p);
     if (!valid) return json(res, 400, { ok: false, error: "reglages_invalides" });
-    settings = valid; saveJSON(SET_FILE, settings);
+    settings = valid; await persistSettings(settings);
     return json(res, 200, { ok: true, settings });
   }
   if (pathname === "/api/admin/cancel" && req.method === "POST") {
     const p = await readJSON(req);
-    const before = store.bookings.length;
-    store.bookings = store.bookings.filter((b) => b.id !== (p && p.id));
-    if (store.bookings.length === before) return json(res, 404, { ok: false, error: "introuvable" });
-    saveJSON(BOOK_FILE, store);
+    const removed = await deleteBooking(p && p.id);
+    if (!removed) return json(res, 404, { ok: false, error: "introuvable" });
     return json(res, 200, { ok: true });
   }
   if (pathname === "/api/admin/block" && req.method === "POST") {
@@ -395,7 +468,7 @@ async function handleAdmin(req, res, pathname) {
     if (p.blocked === false) { if (i >= 0) list.splice(i, 1); }
     else if (i < 0) list.push(p.time);
     if (list.length === 0) delete settings.blockedSlots[p.date];
-    saveJSON(SET_FILE, settings);
+    await persistSettings(settings);
     return json(res, 200, { ok: true, blockedSlots: settings.blockedSlots });
   }
   return json(res, 404, { ok: false, error: "route_inconnue" });
@@ -416,12 +489,13 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       if (pathname === "/api/config" && req.method === "GET") {
+        const bookings = await getBookings();
         return json(res, 200, {
           ok: true,
           config: {
             schedule: settings.schedule, step: settings.step, closedDates: settings.closedDates,
           },
-          unavailable: unavailableMap(),
+          unavailable: unavailableMap(bookings),
         });
       }
       if (pathname === "/api/book" && req.method === "POST") return await handleBook(req, res);
@@ -436,8 +510,12 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res);
 });
 
-server.listen(PORT, () => {
-  console.log(`\n  JOHAN · serveur → http://localhost:${PORT}   (admin: /admin)`);
-  console.log(`  Réservations : ${store.bookings.length} | Jours ouverts : ${Object.values(settings.schedule).filter((d) => d.open).length}/7 | Créneau : ${settings.step} min`);
-  console.log(`  Telegram: ${TG_TOKEN && TG_CHAT ? "✓" : "✗"}  ·  E-mail: ${EMAIL_API_KEY && EMAIL_TO ? "✓" : "✗"}  ·  Admin: ${ADMIN_PASSWORD ? "✓" : "✗ (ADMIN_PASSWORD manquant)"}\n`);
-});
+// Charge les réglages depuis la base (ou les fichiers) AVANT d'accepter des requêtes
+(async () => {
+  settings = normalizeSettings(await loadSettingsRaw());
+  server.listen(PORT, () => {
+    console.log(`\n  JOHAN · serveur → http://localhost:${PORT}   (admin: /admin)`);
+    console.log(`  Stockage : ${USE_SB ? "Supabase ✓" : "fichiers JSON locaux"} | Jours ouverts : ${Object.values(settings.schedule).filter((d) => d.open).length}/7 | Créneau : ${settings.step} min`);
+    console.log(`  Telegram: ${TG_TOKEN && TG_CHAT ? "✓" : "✗"}  ·  E-mail: ${EMAIL_API_KEY && EMAIL_TO ? "✓" : "✗"}  ·  Admin: ${ADMIN_PASSWORD ? "✓" : "✗ (ADMIN_PASSWORD manquant)"}\n`);
+  });
+})();
